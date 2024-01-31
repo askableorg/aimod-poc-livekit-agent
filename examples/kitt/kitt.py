@@ -11,6 +11,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import os
+from dotenv import load_dotenv
+load_dotenv('../../.env')
 
 import asyncio
 from datetime import datetime
