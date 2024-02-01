@@ -30,7 +30,7 @@ from chatgpt import (
     ChatGPTPlugin,
 )
 from livekit.plugins.deepgram import STT
-# from livekit.plugins.elevenlabs import TTS
+from livekit.plugins.elevenlabs import (TTS, Voice, VoiceSettings)
 
 promptFile = open("prompt.txt", "r")
 
@@ -47,8 +47,17 @@ async def intro_text_stream():
 
 AgentState = Enum("AgentState", "IDLE, LISTENING, THINKING, SPEAKING")
 
-# ELEVEN_TTS_SAMPLE_RATE = 24000
-# ELEVEN_TTS_CHANNELS = 1
+ELEVEN_TTS_SAMPLE_RATE = 24000
+ELEVEN_TTS_CHANNELS = 1
+
+ELEVEN_CHARLIE = Voice(
+    id="IKne3meq5aSn9XLyUdCD",
+    name="Charlie",
+    category="premade",
+        settings=VoiceSettings(
+        stability=0.55, similarity_boost=0.75, style=0.0, use_speaker_boost=True
+    ),
+)
 
 
 class KITT:
@@ -63,13 +72,13 @@ class KITT:
             prompt=PROMPT, message_capacity=20, model="gpt-4-1106-preview"
         )
         self.stt_plugin = STT()
-        # self.tts_plugin = TTS(
-        #     model_id="eleven_turbo_v2", sample_rate=ELEVEN_TTS_SAMPLE_RATE
-        # )
+        self.tts_plugin = TTS(
+            model_id="eleven_multilingual_v1", sample_rate=ELEVEN_TTS_SAMPLE_RATE, voice=ELEVEN_CHARLIE
+        )
 
         self.ctx: agents.JobContext = ctx
         self.chat = rtc.ChatManager(ctx.room)
-        # self.audio_out = rtc.AudioSource(ELEVEN_TTS_SAMPLE_RATE, ELEVEN_TTS_CHANNELS)
+        self.audio_out = rtc.AudioSource(ELEVEN_TTS_SAMPLE_RATE, ELEVEN_TTS_CHANNELS)
 
         self._sending_audio = False
         self._processing = False
@@ -83,8 +92,8 @@ class KITT:
         # self.ctx.room.on("disconnected", your_cleanup_function)
 
         # publish audio track
-        # track = rtc.LocalAudioTrack.create_audio_track("agent-mic", self.audio_out)
-        # await self.ctx.room.local_participant.publish_track(track)
+        track = rtc.LocalAudioTrack.create_audio_track("agent-mic", self.audio_out)
+        await self.ctx.room.local_participant.publish_track(track)
 
         # allow the participant to fully subscribe to the agent's audio track, so it doesn't miss
         # anything in the beginning
@@ -148,29 +157,28 @@ class KITT:
         # ChatGPT is streamed, so we'll flip the state immediately
         self.update_state(processing=True)
 
-        # stream = self.tts_plugin.stream()
+        stream = self.tts_plugin.stream()
         # send audio to TTS in parallel
-        # self.ctx.create_task(self.send_audio_stream(stream))
+        self.ctx.create_task(self.send_audio_stream(stream))
         all_text = ""
         async for text in text_stream:
-            # stream.push_text(text)
+            stream.push_text(text)
             all_text += text
 
         self.update_state(processing=False)
         # buffer up the entire response from ChatGPT before sending a chat message
-        logging.info(all_text)
         await self.chat.send_message(all_text)
-        # await stream.flush()
+        await stream.flush()
 
-    # async def send_audio_stream(self, tts_stream: AsyncIterable[SynthesisEvent]):
-    #     async for e in tts_stream:
-    #         if e.type == SynthesisEventType.STARTED:
-    #             self.update_state(sending_audio=True)
-    #         elif e.type == SynthesisEventType.FINISHED:
-    #             self.update_state(sending_audio=False)
-    #         elif e.type == SynthesisEventType.AUDIO:
-    #             await self.audio_out.capture_frame(e.audio.data)
-    #     await tts_stream.aclose()
+    async def send_audio_stream(self, tts_stream: AsyncIterable[SynthesisEvent]):
+        async for e in tts_stream:
+            if e.type == SynthesisEventType.STARTED:
+                self.update_state(sending_audio=True)
+            elif e.type == SynthesisEventType.FINISHED:
+                self.update_state(sending_audio=False)
+            elif e.type == SynthesisEventType.AUDIO:
+                await self.audio_out.capture_frame(e.audio.data)
+        await tts_stream.aclose()
 
     def update_state(self, sending_audio: bool = None, processing: bool = None):
         if sending_audio is not None:
