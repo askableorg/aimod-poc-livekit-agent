@@ -32,23 +32,16 @@ from chatgpt import (
 from livekit.plugins.deepgram import STT
 # from livekit.plugins.elevenlabs import TTS
 
-PROMPT = "You are KITT, a friendly voice assistant powered by LiveKit.  \
-          Conversation should be personable, and be sure to ask follow up questions. \
-          If your response is a question, please append a question mark symbol to the end of it.\
-          Don't respond with more than a few sentences."
-INTRO = "Hello, I am KITT, a friendly voice assistant powered by LiveKit Agents. \
-        You can find my source code in the top right of this screen if you're curious how I work. \
-        Feel free to ask me anything — I'm here to help! Just start talking or type in the chat."
-SIP_INTRO = "Hello, I am KITT, a friendly voice assistant powered by LiveKit Agents. \
-             Feel free to ask me anything — I'm here to help! Just start talking."
+promptFile = open("prompt.txt", "r")
+
+PROMPT = promptFile.read()
+INTRO = "Hello, I am a friendly chatbot. Let me know when you're ready to get started."
+# SIP_INTRO = "Hello, I am KITT, a friendly voice assistant powered by LiveKit Agents. \
+#              Feel free to ask me anything — I'm here to help! Just start talking."
 
 
 # convert intro response to a stream
-async def intro_text_stream(sip: bool):
-    if sip:
-        yield SIP_INTRO
-        return
-
+async def intro_text_stream():
     yield INTRO
 
 
@@ -97,8 +90,7 @@ class KITT:
         # anything in the beginning
         await asyncio.sleep(1)
 
-        sip = self.ctx.room.name.startswith("sip")
-        await self.process_chatgpt_result(intro_text_stream(sip))
+        await self.process_chatgpt_result(intro_text_stream())
         self.update_state()
 
     def on_chat_received(self, message: rtc.ChatMessage):
