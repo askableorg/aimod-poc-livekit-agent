@@ -11,26 +11,25 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import os
-from dotenv import load_dotenv
-load_dotenv('../../.env')
-
-import asyncio
-from datetime import datetime
-from enum import Enum
-import json
-import logging
-from typing import AsyncIterable
-
-from livekit import rtc, agents
-from livekit.agents.tts import SynthesisEvent, SynthesisEventType
+from livekit.plugins.elevenlabs import (TTS, Voice, VoiceSettings)
+from livekit.plugins.deepgram import STT
 from chatgpt import (
     ChatGPTMessage,
     ChatGPTMessageRole,
     ChatGPTPlugin,
 )
-from livekit.plugins.deepgram import STT
-from livekit.plugins.elevenlabs import (TTS, Voice, VoiceSettings)
+from livekit.agents.tts import SynthesisEvent, SynthesisEventType
+from livekit import rtc, agents
+from typing import AsyncIterable
+import logging
+import json
+from enum import Enum
+from datetime import datetime
+import asyncio
+import os
+from dotenv import load_dotenv
+load_dotenv('../../.env')
+
 
 promptFile = open("prompt.txt", "r")
 
@@ -54,10 +53,21 @@ ELEVEN_CHARLIE = Voice(
     id="IKne3meq5aSn9XLyUdCD",
     name="Charlie",
     category="premade",
-        settings=VoiceSettings(
+    settings=VoiceSettings(
         stability=0.55, similarity_boost=0.75, style=0.0, use_speaker_boost=True
     ),
 )
+
+ELEVEN_RANDALL = Voice(
+    id="sGmoTXtWfLdnlMyLWWgH",
+    name="Randall",
+    category="premade",
+    # settings=VoiceSettings(
+    #     stability=0.55, similarity_boost=0.75, style=0.0, use_speaker_boost=True
+    # ),
+)
+
+ELEVEN_MODEL_ID = "eleven_multilingual_v2"
 
 
 class KITT:
@@ -73,12 +83,13 @@ class KITT:
         )
         self.stt_plugin = STT()
         self.tts_plugin = TTS(
-            model_id="eleven_multilingual_v1", sample_rate=ELEVEN_TTS_SAMPLE_RATE, voice=ELEVEN_CHARLIE
+            model_id=ELEVEN_MODEL_ID, sample_rate=ELEVEN_TTS_SAMPLE_RATE, voice=ELEVEN_RANDALL
         )
 
         self.ctx: agents.JobContext = ctx
         self.chat = rtc.ChatManager(ctx.room)
-        self.audio_out = rtc.AudioSource(ELEVEN_TTS_SAMPLE_RATE, ELEVEN_TTS_CHANNELS)
+        self.audio_out = rtc.AudioSource(
+            ELEVEN_TTS_SAMPLE_RATE, ELEVEN_TTS_CHANNELS)
 
         self._sending_audio = False
         self._processing = False
@@ -92,7 +103,8 @@ class KITT:
         # self.ctx.room.on("disconnected", your_cleanup_function)
 
         # publish audio track
-        track = rtc.LocalAudioTrack.create_audio_track("agent-mic", self.audio_out)
+        track = rtc.LocalAudioTrack.create_audio_track(
+            "agent-mic", self.audio_out)
         await self.ctx.room.local_participant.publish_track(track)
 
         # allow the participant to fully subscribe to the agent's audio track, so it doesn't miss
@@ -107,7 +119,8 @@ class KITT:
         if message.deleted:
             return
 
-        msg = ChatGPTMessage(role=ChatGPTMessageRole.user, content=message.message)
+        msg = ChatGPTMessage(role=ChatGPTMessageRole.user,
+                             content=message.message)
         chatgpt_result = self.chatgpt_plugin.add_message(msg)
         self.ctx.create_task(self.process_chatgpt_result(chatgpt_result))
 
@@ -198,7 +211,8 @@ class KITT:
                 "agent_state": state.name.lower(),
             }
         )
-        self.ctx.create_task(self.ctx.room.local_participant.update_metadata(metadata))
+        self.ctx.create_task(
+            self.ctx.room.local_participant.update_metadata(metadata))
 
 
 if __name__ == "__main__":
