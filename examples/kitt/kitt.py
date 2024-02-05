@@ -56,21 +56,38 @@ ELEVEN_CHARLIE = Voice(
     id="IKne3meq5aSn9XLyUdCD",
     name="Charlie",
     category="premade",
-    settings=VoiceSettings(
-        stability=0.55, similarity_boost=0.75, style=0.0, use_speaker_boost=True
-    ),
-)
-
-ELEVEN_RANDALL = Voice(
-    id="sGmoTXtWfLdnlMyLWWgH",
-    name="Randall",
-    category="premade",
     # settings=VoiceSettings(
     #     stability=0.55, similarity_boost=0.75, style=0.0, use_speaker_boost=True
     # ),
 )
 
-ELEVEN_MODEL_ID = "eleven_multilingual_v2"
+# v2 only
+ELEVEN_RANDALL = Voice(
+    id="sGmoTXtWfLdnlMyLWWgH",
+    name="Randall",
+    category="cloned",
+    # settings=VoiceSettings(
+    #     stability=0.55, similarity_boost=0.75, style=0.0, use_speaker_boost=True
+    # ),
+)
+
+# more friendly and youthful. maybe a little too "posh"
+ELEVEN_BELINDA = Voice(
+    id="ibcyNEUbOlXZVwBfzZdH",
+    name="Belinda",
+    category="generated",
+)
+
+# Fast & clipped
+ELEVEN_AMELIA = Voice(
+    id="jIsuAyA6m00dz2fj15q0",
+    name="Amelia",
+    category="generated",
+)
+
+use_voice = ELEVEN_BELINDA
+
+ELEVEN_MODEL_ID = "eleven_multilingual_v1"
 
 
 class KITT:
@@ -86,7 +103,7 @@ class KITT:
         )
         self.stt_plugin = STT()
         self.tts_plugin = TTS(
-            model_id=ELEVEN_MODEL_ID, sample_rate=ELEVEN_TTS_SAMPLE_RATE, voice=ELEVEN_RANDALL
+            model_id=ELEVEN_MODEL_ID, sample_rate=ELEVEN_TTS_SAMPLE_RATE, voice=use_voice
         )
 
         self.ctx: agents.JobContext = ctx
