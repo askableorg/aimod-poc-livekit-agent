@@ -37,7 +37,7 @@ prompt_path = os.path.join(abs_dir, 'prompt.txt')
 promptFile = open(prompt_path, "r")
 
 PROMPT = promptFile.read()
-INTRO = "Hello, I am a friendly chatbot. Let me know when you're ready to get started."
+INTRO = "Hello, thanks for joining. Let me know when you're ready to get started."
 # SIP_INTRO = "Hello, I am KITT, a friendly voice assistant powered by LiveKit Agents. \
 #              Feel free to ask me anything — I'm here to help! Just start talking."
 
