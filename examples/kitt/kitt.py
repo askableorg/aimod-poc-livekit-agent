@@ -28,10 +28,13 @@ from datetime import datetime
 import asyncio
 import os
 from dotenv import load_dotenv
-load_dotenv('../../.env')
-
 abs_dir = os.path.dirname(os.path.abspath(__file__))
-promptFile = open(os.path.join(abs_dir, 'prompt.txt'), "r")
+
+dotenv_path = os.path.abspath(os.path.join(abs_dir, '../..', '.env'))
+load_dotenv(dotenv_path)
+
+prompt_path = os.path.join(abs_dir, 'prompt.txt')
+promptFile = open(prompt_path, "r")
 
 PROMPT = promptFile.read()
 INTRO = "Hello, I am a friendly chatbot. Let me know when you're ready to get started."
