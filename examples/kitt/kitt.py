@@ -30,8 +30,8 @@ import os
 from dotenv import load_dotenv
 load_dotenv('../../.env')
 
-
-promptFile = open("prompt.txt", "r")
+abs_dir = os.path.dirname(os.path.abspath(__file__))
+promptFile = open(os.path.join(abs_dir, 'prompt.txt'), "r")
 
 PROMPT = promptFile.read()
 INTRO = "Hello, I am a friendly chatbot. Let me know when you're ready to get started."
