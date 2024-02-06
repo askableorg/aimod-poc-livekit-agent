@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import time
 from livekit.plugins.elevenlabs import (TTS, Voice, VoiceSettings)
 from livekit.plugins.deepgram import STT
 from chatgpt import (
@@ -89,6 +90,8 @@ use_voice = ELEVEN_BELINDA
 
 ELEVEN_MODEL_ID = "eleven_multilingual_v1"
 
+TTS_DEBOUNCE_BUFFER = 3 # seconds
+
 
 class KITT:
     @classmethod
@@ -102,6 +105,10 @@ class KITT:
             prompt=PROMPT, message_capacity=20, model="gpt-4-1106-preview"
         )
         self.stt_plugin = STT()
+
+        self.stt_message = ""
+        self.stt_last_activity = datetime.now()
+
         self.tts_plugin = TTS(
             model_id=ELEVEN_MODEL_ID, sample_rate=ELEVEN_TTS_SAMPLE_RATE, voice=use_voice
         )
@@ -172,20 +179,49 @@ class KITT:
             if alt.confidence < 0.75 or text == "":
                 continue
 
-            await self.ctx.room.local_participant.publish_data(
-                json.dumps(
-                    {
-                        "text": text,
-                        "timestamp": int(datetime.now().timestamp() * 1000),
-                    }
-                ),
-                topic="transcription",
-            )
+            self.stt_message += " " + text
+            self.stt_last_activity = datetime.now()
 
-            msg = ChatGPTMessage(role=ChatGPTMessageRole.user, content=text)
-            chatgpt_stream = self.chatgpt_plugin.add_message(msg)
-            self.ctx.create_task(self.process_chatgpt_result(chatgpt_stream))
+            print('process_stt_stream', self.stt_last_activity, text, self.stt_message)
 
+            # attempt to send messages in the background
+            self.ctx.create_task(self.send_stt_message())
+
+    async def send_stt_message(self):
+        if (self._agent_state != AgentState.LISTENING):
+            self.stt_message = ""
+            return
+        if self.stt_message == "":
+            return
+        
+        time.sleep(1)
+        elapsed = (datetime.now() - self.stt_last_activity).total_seconds()
+        print('send_stt_message', self.stt_last_activity, self.stt_message, elapsed)
+
+        # If the last activity was less than 1 second ago, try again
+        if elapsed < TTS_DEBOUNCE_BUFFER:
+            self.ctx.create_task(self.send_stt_message())
+            return
+        
+        text = self.stt_message
+        # clear the message variables
+        self.stt_message = ""
+        self.stt_last_activity = datetime.now()
+
+        await self.ctx.room.local_participant.publish_data(
+            json.dumps(
+                {
+                    "text": text,
+                    "timestamp": int(datetime.now().timestamp() * 1000),
+                }
+            ),
+            topic="transcription",
+        )
+
+        msg = ChatGPTMessage(role=ChatGPTMessageRole.user, content=text)
+        chatgpt_stream = self.chatgpt_plugin.add_message(msg)
+        self.ctx.create_task(self.process_chatgpt_result(chatgpt_stream))
+    
     async def process_chatgpt_result(self, text_stream):
         # ChatGPT is streamed, so we'll flip the state immediately
         self.update_state(processing=True)
