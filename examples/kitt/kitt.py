@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import time
 from livekit.plugins.elevenlabs import (TTS, Voice, VoiceSettings)
 from livekit.plugins.deepgram import STT
 from chatgpt import (
@@ -115,8 +116,13 @@ class KITT:
         self._processing = False
         self._agent_state: AgentState = AgentState.IDLE
 
+        self.user_audio_muted = False
+        self.unsent_messages = []
+
         self.chat.on("message_received", self.on_chat_received)
         self.ctx.room.on("track_subscribed", self.on_track_subscribed)
+        self.ctx.room.on("track_muted", self.on_track_muted)
+        self.ctx.room.on("track_unmuted", self.on_track_unmuted)
 
     async def start(self):
         # if you have to perform teardown cleanup, you can listen to the disconnected event
@@ -152,6 +158,31 @@ class KITT:
     ):
         self.ctx.create_task(self.process_track(track))
 
+    def on_track_muted(
+        self,
+        participant: rtc.RemoteParticipant,
+        publication: rtc.TrackPublication,
+    ):
+        if (publication.track.kind != rtc.TrackKind.KIND_AUDIO or participant.identity == "kitt_agent"):
+            return
+
+        self.user_audio_muted = publication.track.muted
+
+        if publication.track.muted:
+            # Wait for a bit before sending unsent messages to make sure it's been captured after the mute event
+            time.sleep(2)
+            self.post_unsent_messages()
+
+    def on_track_unmuted(
+        self,
+        participant: rtc.RemoteParticipant,
+        publication: rtc.TrackPublication,
+    ):
+        if (publication.track.kind != rtc.TrackKind.KIND_AUDIO or participant.identity == "kitt_agent"):
+            return
+
+        self.user_audio_muted = publication.track.muted
+
     async def process_track(self, track: rtc.Track):
         audio_stream = rtc.AudioStream(track)
         stream = self.stt_plugin.stream()
@@ -172,6 +203,7 @@ class KITT:
             if alt.confidence < 0.75 or text == "":
                 continue
 
+            self.unsent_messages.append(text)
             await self.ctx.room.local_participant.publish_data(
                 json.dumps(
                     {
@@ -181,7 +213,14 @@ class KITT:
                 ),
                 topic="transcription",
             )
+    
+            if self.user_audio_muted:
+                self.post_unsent_messages()
 
+    def post_unsent_messages(self):
+        if len(self.unsent_messages) > 0:
+            text = "\n".join(self.unsent_messages)
+            self.unsent_messages = []
             msg = ChatGPTMessage(role=ChatGPTMessageRole.user, content=text)
             chatgpt_stream = self.chatgpt_plugin.add_message(msg)
             self.ctx.create_task(self.process_chatgpt_result(chatgpt_stream))
