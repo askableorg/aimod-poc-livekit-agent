@@ -207,8 +207,8 @@ class KITT:
             #     'end_of_speech=' + ('✅' if event.end_of_speech else '☒'),
             #     buffered_text = " ".join([buffered_text, event.alternatives[0].text])
             # )
-            if event.alternatives[0].text == "":
-                continue
+            # if event.alternatives[0].text == "":
+            #     continue
             if event.is_final:
                 buffered_text = " ".join([buffered_text, event.alternatives[0].text])
 
