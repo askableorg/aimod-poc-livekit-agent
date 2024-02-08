@@ -102,7 +102,9 @@ class KITT:
         self.chatgpt_plugin = ChatGPTPlugin(
             prompt=PROMPT, message_capacity=20, model="gpt-4-1106-preview"
         )
-        self.stt_plugin = STT()
+        self.stt_plugin = STT(
+            min_silence_duration=1000,
+        )
         self.tts_plugin = TTS(
             model_id=ELEVEN_MODEL_ID, sample_rate=ELEVEN_TTS_SAMPLE_RATE, voice=use_voice
         )
@@ -194,25 +196,26 @@ class KITT:
         await stream.flush()
 
     async def process_stt_stream(self, stream):
+        buffered_text = ""
         async for event in stream:
-            if not event.is_final or self._agent_state != AgentState.LISTENING:
+            if event.alternatives[0].text == "":
                 continue
+            if event.is_final:
+                buffered_text = " ".join([buffered_text, event.alternatives[0].text])
 
-            alt = event.alternatives[0]
-            text = alt.text
-            if alt.confidence < 0.75 or text == "":
+            if not event.end_of_speech:
                 continue
-
-            self.unsent_messages.append(text)
             await self.ctx.room.local_participant.publish_data(
                 json.dumps(
                     {
-                        "text": text,
+                        "text": buffered_text,
                         "timestamp": int(datetime.now().timestamp() * 1000),
                     }
                 ),
                 topic="transcription",
             )
+
+            buffered_text = ""
     
             if self.user_audio_muted:
                 self.post_unsent_messages()
