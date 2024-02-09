@@ -50,7 +50,7 @@ async def intro_text_stream():
 
 AgentState = Enum("AgentState", "IDLE, LISTENING, THINKING, SPEAKING")
 
-STT_SILENCE_BUFFER = 1500
+STT_SILENCE_BUFFER = 100
 
 ELEVEN_TTS_SAMPLE_RATE = 24000
 ELEVEN_TTS_CHANNELS = 1
@@ -106,6 +106,7 @@ class KITT:
         )
         self.stt_plugin = STT(
             language="en",
+            interim_results=True,
             min_silence_duration=STT_SILENCE_BUFFER,
         )
         self.tts_plugin = TTS(
@@ -126,8 +127,8 @@ class KITT:
 
         self.chat.on("message_received", self.on_chat_received)
         self.ctx.room.on("track_subscribed", self.on_track_subscribed)
-        # self.ctx.room.on("track_muted", self.on_track_muted)
-        # self.ctx.room.on("track_unmuted", self.on_track_unmuted)
+        self.ctx.room.on("track_muted", self.on_track_muted)
+        self.ctx.room.on("track_unmuted", self.on_track_unmuted)
 
     async def start(self):
         # if you have to perform teardown cleanup, you can listen to the disconnected event
@@ -173,10 +174,10 @@ class KITT:
 
         self.user_audio_muted = publication.track.muted
 
-        # if publication.track.muted:
+        if publication.track.muted:
             # Wait for a bit before sending unsent messages to make sure it's been captured after the mute event
             # time.sleep(2)
-            # self.post_unsent_messages()
+            self.post_unsent_messages()
 
     def on_track_unmuted(
         self,
@@ -201,19 +202,23 @@ class KITT:
     async def process_stt_stream(self, stream):
         buffered_text = ""
         async for event in stream:
-            # print(
-            #     "💬 ", 
-            #     'is_final=' + ('✅' if event.is_final else '☒'),
-            #     'end_of_speech=' + ('✅' if event.end_of_speech else '☒'),
-            #     buffered_text = " ".join([buffered_text, event.alternatives[0].text])
-            # )
-            # if event.alternatives[0].text == "":
-            #     continue
+            print(
+                "💬 ", 
+                'is_final=' + ('✅' if event.is_final else '☒'),
+                'end_of_speech=' + ('✅' if event.end_of_speech else '☒'),
+                'buffered_text= ' + buffered_text + " + " + event.alternatives[0].text,
+                'unsent_messages= ' + "; ".join(self.unsent_messages),
+            )
+            if event.alternatives[0].text == "":
+                continue
             if event.is_final:
                 buffered_text = " ".join([buffered_text, event.alternatives[0].text])
 
             if not event.end_of_speech:
                 continue
+
+            self.unsent_messages.append(buffered_text)
+
             await self.ctx.room.local_participant.publish_data(
                 json.dumps(
                     {
@@ -224,12 +229,17 @@ class KITT:
                 topic="transcription",
             )
 
-            msg = ChatGPTMessage(role=ChatGPTMessageRole.user, content=buffered_text)
-            chatgpt_stream = self.chatgpt_plugin.add_message(msg)
-            self.ctx.create_task(self.process_chatgpt_result(chatgpt_stream))
+            # msg = ChatGPTMessage(role=ChatGPTMessageRole.user, content=buffered_text)
+            # chatgpt_stream = self.chatgpt_plugin.add_message(msg)
+            # self.ctx.create_task(self.process_chatgpt_result(chatgpt_stream))
+
             buffered_text = ""
 
+            if self.user_audio_muted:
+                self.post_unsent_messages()
+
     def post_unsent_messages(self):
+        print("💥 Posting unsent messages", self.unsent_messages)
         if len(self.unsent_messages) > 0:
             text = "\n".join(self.unsent_messages)
             self.unsent_messages = []
