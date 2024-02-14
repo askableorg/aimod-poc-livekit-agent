@@ -20,7 +20,7 @@ from chatgpt import (
     ChatGPTPlugin,
 )
 from livekit.agents.tts import SynthesisEvent, SynthesisEventType
-from livekit import rtc, agents
+from livekit import rtc, agents, api
 from typing import AsyncIterable
 import logging
 import json
@@ -122,6 +122,7 @@ class KITT:
         self._processing = False
         self._agent_state: AgentState = AgentState.IDLE
 
+        self.user_connected: float = 0
         self.user_audio_muted = False
         self.unsent_messages = []
 
@@ -129,6 +130,9 @@ class KITT:
         self.ctx.room.on("track_subscribed", self.on_track_subscribed)
         self.ctx.room.on("track_muted", self.on_track_muted)
         self.ctx.room.on("track_unmuted", self.on_track_unmuted)
+
+        self.ctx.room.on("participant_connected", self.on_participant_connected)
+        self.ctx.room.on("participant_disconnected", self.on_participant_disconnected)
 
     async def start(self):
         # if you have to perform teardown cleanup, you can listen to the disconnected event
@@ -139,12 +143,20 @@ class KITT:
             "agent-mic", self.audio_out)
         await self.ctx.room.local_participant.publish_track(track)
 
-        # allow the participant to fully subscribe to the agent's audio track, so it doesn't miss
-        # anything in the beginning
-        await asyncio.sleep(1)
+        print("🤖 KITT started", self.ctx.room.name)
 
-        await self.process_chatgpt_result(intro_text_stream())
-        self.update_state()
+        await asyncio.sleep(1)
+        await self.send_intro_message()
+
+    async def send_intro_message(self):
+        # check if the participant is ready
+        if (self.user_connected and (self.user_connected + 3 < time.time())):
+            await self.process_chatgpt_result(intro_text_stream())
+            self.update_state()
+        else:
+            # give the participant a second to get properly connected
+            await asyncio.sleep(1)
+            await self.send_intro_message()
 
     def on_chat_received(self, message: rtc.ChatMessage):
         # TODO: handle deleted and updated messages in message context
@@ -188,6 +200,21 @@ class KITT:
             return
 
         self.user_audio_muted = publication.track.muted
+
+    def on_participant_connected(self, participant: rtc.RemoteParticipant):
+        print("👋 Participant connected", participant.identity)
+        if (not participant.identity == "kitt_agent"):
+            # set the time that the user connected so that the intro message can be sent a few seconds later
+            self.user_connected = time.time()
+
+    def on_participant_disconnected(self, participant: rtc.RemoteParticipant):
+        print("👋 Participant disconnected", participant.identity)
+        # if (not participant.identity == "kitt_agent"):
+        #     asyncio.run(self.close_room)
+
+    async def close_room(self):
+        room_info = await api.DeleteRoomRequest(room_sid=self.ctx.room.sid)
+        print("👋 Room closed", room_info)
 
     async def process_track(self, track: rtc.Track):
         audio_stream = rtc.AudioStream(track)
@@ -248,6 +275,7 @@ class KITT:
             self.ctx.create_task(self.process_chatgpt_result(chatgpt_stream))
 
     async def process_chatgpt_result(self, text_stream):
+        print("🧠 Processing ChatGPT result", text_stream)
         # ChatGPT is streamed, so we'll flip the state immediately
         self.update_state(processing=True)
 
