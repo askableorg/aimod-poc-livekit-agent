@@ -50,7 +50,7 @@ async def intro_text_stream():
 
 AgentState = Enum("AgentState", "IDLE, LISTENING, THINKING, SPEAKING")
 
-STT_SILENCE_BUFFER = 50
+STT_SILENCE_BUFFER = 1000
 
 ELEVEN_TTS_SAMPLE_RATE = 24000
 ELEVEN_TTS_CHANNELS = 1
@@ -243,6 +243,8 @@ class KITT:
 
             if not event.end_of_speech:
                 continue
+            if event.is_final:
+                buffered_text = " ".join([buffered_text, event.alternatives[0].text])
 
             self.unsent_messages.append(buffered_text)
 
@@ -273,6 +275,7 @@ class KITT:
             msg = ChatGPTMessage(role=ChatGPTMessageRole.user, content=text)
             chatgpt_stream = self.chatgpt_plugin.add_message(msg)
             self.ctx.create_task(self.process_chatgpt_result(chatgpt_stream))
+            buffered_text = ""
 
     async def process_chatgpt_result(self, text_stream):
         print("🧠 Processing ChatGPT result", text_stream)
